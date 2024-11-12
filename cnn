@@ -1,0 +1,96 @@
+import os
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, Input
+from tensorflow.keras.optimizers import Adam
+from PIL import Image
+
+# Folders
+base_dir = r"C:\Users\G7\Desktop\Thesis"
+
+# Folders format check
+valid_formats = ('.png', '.jpg', '.jpeg')
+class_folders = ['dt_splice', 'dt_good', 'wc_good', 'wc_cf', 'wc_wrinkle']
+
+for folder_name in class_folders:
+    folder_path = os.path.join(base_dir, folder_name)
+    if os.path.exists(folder_path):
+        print(f"Checking folder: {folder_path}")
+        image_files = []
+        for file_name in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, file_name)
+            try:
+                with Image.open(file_path) as img:
+                    img.verify() 
+                    image_files.append(file_name)
+            except (IOError, SyntaxError):
+                print(f"Invalid image file found and skipped: {file_path}")
+        
+        if image_files:
+            print(f"Folder '{folder_name}' contains {len(image_files)} valid image files.")
+        else:
+            print(f"Folder '{folder_name}' contains no valid image files.")
+    else:
+        print(f"Folder '{folder_name}' does not exist!")
+
+datagen = ImageDataGenerator(rescale=1./255, validation_split=0.2)  # 80% training, 20% validation
+
+train_generator = datagen.flow_from_directory(
+    base_dir,
+    target_size=(512, 512),  # Input Image Size
+    batch_size=32, # Batch Sie
+    class_mode='categorical',
+    subset='training'
+)
+
+validation_generator = datagen.flow_from_directory(
+    base_dir,
+    target_size=(512, 512),
+    batch_size=32,  
+    class_mode='categorical',
+    subset='validation'
+)
+
+# Validation Process
+print(f"Training samples: {train_generator.samples}")
+print(f"Validation samples: {validation_generator.samples}")
+if train_generator.samples == 0 or validation_generator.samples == 0:
+    raise ValueError("No images were found. Check your directory structure and file formats.")
+
+# Convolutional Neural Network Model
+model = Sequential([
+    Input(shape=(512, 512, 3)),  # Input Image Size
+    Conv2D(32, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Conv2D(64, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Conv2D(128, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Flatten(),
+    Dense(512, activation='relu'),
+    Dropout(0.5),
+    Dense(5, activation='softmax')  # 5 classes
+])
+
+# Model Summary
+model.summary()
+model.compile(optimizer=Adam(learning_rate=0.0001), loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Model Training
+history = model.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // train_generator.batch_size,
+    validation_data=validation_generator,
+    validation_steps=validation_generator.samples // validation_generator.batch_size,
+    epochs=20,  
+    verbose=1 
+)
+
+# Saving Process
+model.save("cnn_classification_model.h5")
+print("Model saved as cnn_classification_model.h5")
+
+# Validation Process
+loss, accuracy = model.evaluate(validation_generator)
+print(f"Validation Accuracy: {accuracy*100:.2f}%")
